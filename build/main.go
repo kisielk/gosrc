@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -10,9 +11,9 @@ import (
 	"strings"
 )
 
-const (
-	gopath      = "./gopath"
-	numBuilders = 8
+var (
+	gopath      = flag.String("gopath", "./gopath", "GOPATH to use for builds")
+	numBuilders = flag.Int("builders", 8, "Number of concurrent builders")
 )
 
 var prefixes = []string{
@@ -63,7 +64,7 @@ func getWorld() ([]string, error) {
 
 func getPackages(gopath string, pkgs []string) {
 	pkgChan := make(chan string)
-	for i := 0; i < numBuilders; i++ {
+	for i := 0; i < *numBuilders; i++ {
 		go builder(gopath, pkgChan)
 	}
 	for _, p := range pkgs {
@@ -102,7 +103,7 @@ func builder(goroot string, pkgs chan string) {
 }
 
 func main() {
-	gopath, err := filepath.Abs(gopath)
+	gopath, err := filepath.Abs(*gopath)
 	if err != nil {
 		log.Fatal("failed to determine GOPATH:", err)
 	}
