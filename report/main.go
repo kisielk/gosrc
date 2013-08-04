@@ -8,6 +8,7 @@ import (
 	"labix.org/v2/mgo/bson"
 	"log"
 	"net/http"
+	"net/url"
 )
 
 var (
@@ -49,7 +50,7 @@ const indexTemplate = `
 <td>{{if .Test.Succeeded}}<span class="check">✔</span>{{else}}<span class="cross">✘</span>{{end}}</td>
 <td>{{.Vet.Errors}}</td>
 <td>{{.Repository.Revision | limit 10}}</td>
-<td>{{.Repository.URL}}</td>
+<td><a href="/-/repo?r={{.Repository.URL}}">{{.Repository.URL}}</a></td>
 </tr>
 {{end}}
 </table>
@@ -87,9 +88,27 @@ const packageTemplate = `
 </html>
 `
 
+const repoTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+<title>Repo {{.URL}}</title>
+</head>
+<body>
+<h1>Packages</h1>
+<ul>
+{{range .Packages}}
+<li><a href="/{{.ImportPath}}">{{.ImportPath}}</a></li>
+{{end}}
+</ul>
+</body>
+</html>
+`
+
 var templates = map[string]*template.Template{
 	"index":   parseTemplate("index", indexTemplate),
 	"package": parseTemplate("package", packageTemplate),
+	"repo":    parseTemplate("repo", repoTemplate),
 }
 
 func parseTemplate(name, t string) *template.Template {
@@ -97,6 +116,7 @@ func parseTemplate(name, t string) *template.Template {
 }
 
 var funcMap = template.FuncMap{
+	"queryEscape": url.QueryEscape,
 	"limit": func(n int, s string) string {
 		runes := []rune(s)
 		if n > len(runes) {
@@ -135,6 +155,26 @@ func getPackage(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func getRepo(w http.ResponseWriter, req *http.Request) {
+	c := session.DB(*database).C("packages")
+	repo := req.FormValue("r")
+	var packages []gosrc.Package
+	log.Println(repo)
+	err := c.Find(bson.M{"repository.url": repo}).Iter().All(&packages)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	err = templates["repo"].Execute(w, map[string]interface{}{"URL": repo, "Packages": packages})
+	if err != nil {
+		log.Print(err)
+	}
+}
+
+const (
+	indexPath = "/-/index"
+	repoPath  = "/-/repo"
+)
+
 func main() {
 	s, err := mgo.Dial(*mongo)
 	if err != nil {
@@ -146,7 +186,8 @@ func main() {
 	}
 	session = s
 
-	http.HandleFunc("/-/index", getIndex)
+	http.HandleFunc(indexPath, getIndex)
+	http.HandleFunc(repoPath, getRepo)
 	http.HandleFunc("/", getPackage)
 	err = http.ListenAndServe(":8080", nil)
 	if err != nil {
