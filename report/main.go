@@ -33,9 +33,9 @@ const indexTemplate = `
 </tr>
 {{range .Packages}}
 <tr>
-<td><a href="/{{.Path}}">{{.Path}}</a></td>
-<td>{{.Build}}</td>
-<td>{{.Test}}</td>
+<td><a href="/{{.ImportPath}}">{{.ImportPath}}</a></td>
+<td>{{.Build.Succeeded}}</td>
+<td>{{.Test.Succeeded}}</td>
 <td>{{.Repository.Revision | limit 10}}</td>
 </tr>
 {{end}}
@@ -48,10 +48,18 @@ const packageTemplate = `
 <!DOCTYPE html>
 <html>
 <head>
-<title>{{.Path}}</title>
+<title>{{.ImportPath}}</title>
 </head>
 <body>
-<h1>{{.Path}}</h1>
+<h1>{{.ImportPath}}</h1>
+<h2>Build Log</h2>
+<pre>
+{{.Build.Log}}
+</pre>
+<h2>Test Log</h2>
+<pre>
+{{.Test.Log}}
+</pre>
 </body>
 </html>
 `
@@ -93,7 +101,7 @@ func getPackage(w http.ResponseWriter, req *http.Request) {
 	c := session.DB(*database).C("packages")
 	var pkg gosrc.Package
 	path := req.URL.Path[1:]
-	err := c.Find(bson.M{"path": path}).One(&pkg)
+	err := c.Find(bson.M{"importpath": path}).One(&pkg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

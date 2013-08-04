@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"github.com/kisielk/gosrc"
@@ -95,26 +96,27 @@ func makeEnv(gopath string) []string {
 
 func getRepository(gopath, pkg string) gosrc.Repository {
 	path := filepath.Join(gopath, "src", pkg)
-	var repo gosrc.Repository
+	var (
+		repo gosrc.Repository
+		vcs  []VCS
+	)
 	switch {
 	case strings.HasPrefix(pkg, "github.com"):
-		repo.Type = "git"
-		repo.Revision = git.Revision(path)
-		repo.Root = git.Root(path)
+		vcs = append(vcs, git)
 	case strings.HasPrefix(pkg, "bitbucket.org") || strings.HasPrefix(pkg, "code.google.com"):
-		repo.Type = "hg"
-		repo.Revision = hg.Revision(path)
-		if repo.Revision == "" {
-			repo.Type = "git"
-			repo.Revision = git.Revision(path)
-			repo.Root = git.Root(path)
-		} else {
-			repo.Root = hg.Root(path)
-		}
+		vcs = append(vcs, hg)
+		vcs = append(vcs, git)
 	case strings.HasPrefix(pkg, "launchpad.net"):
-		repo.Type = "bzr"
-		repo.Revision = bzr.Revision(path)
-		repo.Root = bzr.Root(path)
+		vcs = append(vcs, bzr)
+	}
+	for _, v := range vcs {
+		repo.Revision = v.Revision(path)
+		if repo.Revision == "" {
+			continue
+		}
+		repo.Type = v.Cmd
+		repo.Root = v.Root(path)
+		break
 	}
 	path, err := filepath.Rel(filepath.Join(gopath, "src"), repo.Root)
 	if err != nil {
@@ -124,42 +126,54 @@ func getRepository(gopath, pkg string) gosrc.Repository {
 	return repo
 }
 
+func goGet(gopath, pkg string) (string, error) {
+	var out bytes.Buffer
+	cmd := exec.Command("go", "get", "-u", pkg)
+	cmd.Env = makeEnv(gopath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = &out
+	err := cmd.Run()
+	return out.String(), err
+}
+
+func goTest(gopath, pkg string) (string, error) {
+	var out bytes.Buffer
+	cmd := exec.Command("go", "test", pkg)
+	cmd.Env = makeEnv(gopath)
+	cmd.Stdout = &out
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	return out.String(), err
+}
+
 func getPackage(gopath, pkg string) gosrc.Package {
 	var (
-		build = false
-		test  = false
-		env   = makeEnv(gopath)
+		build gosrc.Build
+		test  gosrc.Test
 		date  = time.Now()
 	)
 	log.Print("building ", pkg)
-	cmd := exec.Command("go", "get", "-u", pkg)
-	cmd.Env = env
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-
+	buildOut, err := goGet(gopath, pkg)
+	build.Log = buildOut
 	if err != nil {
 		log.Println("build failed: ", err)
 	} else {
 		log.Println("build success")
-		build = true
-		log.Print("testing", pkg)
-		cmd := exec.Command("go", "test", pkg)
-		cmd.Env = env
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err := cmd.Run()
+		build.Succeeded = true
+
+		testOut, err := goTest(gopath, pkg)
 		if err != nil {
 			log.Println("testing failed: ", err)
 		} else {
 			log.Println("testing success")
-			test = true
+			test.Succeeded = true
 		}
+		test.Log = testOut
 	}
 	repository := getRepository(gopath, pkg)
 
 	return gosrc.Package{
-		Path:       pkg,
+		ImportPath: pkg,
 		Build:      build,
 		Test:       test,
 		Date:       date,

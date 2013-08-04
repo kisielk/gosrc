@@ -11,9 +11,19 @@ type Repository struct {
 }
 
 type Package struct {
-	Path       string
+	ImportPath string
 	Date       time.Time
 	Repository Repository
-	Build      bool
-	Test       bool
+	Build      Build
+	Test       Test
+}
+
+type Build struct {
+	Succeeded bool
+	Log       string
+}
+
+type Test struct {
+	Succeeded bool
+	Log       string
 }
