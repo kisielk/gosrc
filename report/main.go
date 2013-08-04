@@ -29,6 +29,7 @@ const indexTemplate = `
 <th>Import Path</th>
 <th>Build</th>
 <th>Test</th>
+<th>Vet</th>
 <th>Revision</th>
 </tr>
 {{range .Packages}}
@@ -36,6 +37,7 @@ const indexTemplate = `
 <td><a href="/{{.ImportPath}}">{{.ImportPath}}</a></td>
 <td>{{.Build.Succeeded}}</td>
 <td>{{.Test.Succeeded}}</td>
+<td>{{.Vet.Errors}}</td>
 <td>{{.Repository.Revision | limit 10}}</td>
 </tr>
 {{end}}
@@ -59,6 +61,10 @@ const packageTemplate = `
 <h2>Test Log</h2>
 <pre>
 {{.Test.Log}}
+</pre>
+<h2>Vet Log</h2>
+<pre>
+{{.Vet.Log}}
 </pre>
 </body>
 </html>

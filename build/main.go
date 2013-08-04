@@ -146,39 +146,50 @@ func goTest(gopath, pkg string) (string, error) {
 	return out.String(), err
 }
 
+func goVet(gopath, pkg string) (string, error) {
+	var out bytes.Buffer
+	cmd := exec.Command("go", "vet", pkg)
+	cmd.Env = makeEnv(gopath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = &out
+	err := cmd.Run()
+	return out.String(), err
+}
+
 func getPackage(gopath, pkg string) gosrc.Package {
-	var (
-		build gosrc.Build
-		test  gosrc.Test
-		date  = time.Now()
-	)
+	p := gosrc.Package{
+		ImportPath: pkg,
+		Date:       time.Now(),
+	}
+
 	log.Print("building ", pkg)
 	buildOut, err := goGet(gopath, pkg)
-	build.Log = buildOut
+	p.Build.Log = buildOut
 	if err != nil {
 		log.Println("build failed: ", err)
 	} else {
 		log.Println("build success")
-		build.Succeeded = true
+		p.Build.Succeeded = true
 
 		testOut, err := goTest(gopath, pkg)
 		if err != nil {
 			log.Println("testing failed: ", err)
 		} else {
 			log.Println("testing success")
-			test.Succeeded = true
+			p.Test.Succeeded = true
 		}
-		test.Log = testOut
-	}
-	repository := getRepository(gopath, pkg)
+		p.Test.Log = testOut
 
-	return gosrc.Package{
-		ImportPath: pkg,
-		Build:      build,
-		Test:       test,
-		Date:       date,
-		Repository: repository,
+		vetOut, err := goVet(gopath, pkg)
+		if err != nil {
+			log.Println("vet failed: ", err)
+		} else {
+			p.Vet.Errors = strings.Count(vetOut, "\n")
+		}
+		p.Vet.Log = vetOut
 	}
+	p.Repository = getRepository(gopath, pkg)
+	return p
 }
 
 func builder(goroot string, pkgs chan string, results chan gosrc.Package) {

@@ -16,6 +16,7 @@ type Package struct {
 	Repository Repository
 	Build      Build
 	Test       Test
+	Vet        Vet
 }
 
 type Build struct {
@@ -26,4 +27,9 @@ type Build struct {
 type Test struct {
 	Succeeded bool
 	Log       string
+}
+
+type Vet struct {
+	Errors int
+	Log    string
 }
