@@ -12,6 +12,7 @@ type Repository struct {
 
 type Package struct {
 	ImportPath string
+	Imports    []string
 	Date       time.Time
 	Repository Repository
 	Build      Build

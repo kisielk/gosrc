@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"github.com/kisielk/gosrc"
+	"go/build"
 	"labix.org/v2/mgo"
 	"log"
 	"net/http"
@@ -162,34 +163,52 @@ func getPackage(gopath, pkg string) gosrc.Package {
 		Date:       time.Now(),
 	}
 
-	log.Print("building ", pkg)
+	log.Println(pkg, "building")
 	buildOut, err := goGet(gopath, pkg)
 	p.Build.Log = buildOut
 	if err != nil {
-		log.Println("build failed: ", err)
+		log.Println(pkg, " build failed:", err)
 	} else {
-		log.Println("build success")
+		log.Println(pkg, " build succeeded")
 		p.Build.Succeeded = true
 
+		log.Println(pkg, "testing")
 		testOut, err := goTest(gopath, pkg)
 		if err != nil {
-			log.Println("testing failed: ", err)
+			log.Println(pkg, "testing failed:", err)
 		} else {
-			log.Println("testing success")
+			log.Println(pkg, "testing succeeded")
 			p.Test.Succeeded = true
 		}
 		p.Test.Log = testOut
 
+		log.Println(pkg, "vetting")
 		vetOut, err := goVet(gopath, pkg)
 		if err != nil {
-			log.Println("vet failed: ", err)
+			log.Println(pkg, "vetting failed:", err)
 		} else {
+			log.Println(pkg, "vetting succeeded")
 			p.Vet.Errors = strings.Count(vetOut, "\n")
 		}
 		p.Vet.Log = vetOut
+
+		p.Imports = getImports(gopath, pkg)
 	}
 	p.Repository = getRepository(gopath, pkg)
 	return p
+}
+
+func getImports(gopath, pkg string) []string {
+	var imports []string
+	ctx := build.Default
+	ctx.GOPATH = gopath
+	ctx.UseAllFiles = true
+	buildPkg, err := ctx.Import(pkg, "", 0)
+	if err != nil {
+		log.Println(pkg, "couldn't import:", err)
+		return imports
+	}
+	return buildPkg.Imports
 }
 
 func builder(goroot string, pkgs chan string, results chan gosrc.Package) {

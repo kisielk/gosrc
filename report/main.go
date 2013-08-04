@@ -75,6 +75,12 @@ const packageTemplate = `
 <pre>
 {{.Vet.Log}}
 </pre>
+<h2>Imports</h2>
+<ul>
+{{range .Imports}}
+<li><a href="/{{.}}">{{.}}</a></li>
+{{end}}
+</ul>
 </body>
 </html>
 `
