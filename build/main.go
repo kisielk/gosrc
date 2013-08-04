@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"github.com/kisielk/gosrc"
 	"labix.org/v2/mgo"
 	"log"
 	"net/http"
@@ -68,7 +69,7 @@ func getWorld() ([]string, error) {
 
 func getPackages(collection *mgo.Collection, gopath string, pkgs []string) {
 	pkgChan := make(chan string)
-	results := make(chan Package)
+	results := make(chan gosrc.Package)
 	for i := 0; i < *numBuilders; i++ {
 		go builder(gopath, pkgChan, results)
 	}
@@ -92,15 +93,9 @@ func makeEnv(gopath string) []string {
 	return env
 }
 
-type Repository struct {
-	Type     string
-	Revision string
-	Root     string
-}
-
-func getRepository(gopath, pkg string) Repository {
+func getRepository(gopath, pkg string) gosrc.Repository {
 	path := filepath.Join(gopath, "src", pkg)
-	var repo Repository
+	var repo gosrc.Repository
 	switch {
 	case strings.HasPrefix(pkg, "github.com"):
 		repo.Type = "git"
@@ -129,15 +124,7 @@ func getRepository(gopath, pkg string) Repository {
 	return repo
 }
 
-type Package struct {
-	Path       string
-	Date       time.Time
-	Repository Repository
-	Build      bool
-	Test       bool
-}
-
-func getPackage(gopath, pkg string) Package {
+func getPackage(gopath, pkg string) gosrc.Package {
 	var (
 		build = false
 		test  = false
@@ -171,7 +158,7 @@ func getPackage(gopath, pkg string) Package {
 	}
 	repository := getRepository(gopath, pkg)
 
-	return Package{
+	return gosrc.Package{
 		Path:       pkg,
 		Build:      build,
 		Test:       test,
@@ -180,7 +167,7 @@ func getPackage(gopath, pkg string) Package {
 	}
 }
 
-func builder(goroot string, pkgs chan string, results chan Package) {
+func builder(goroot string, pkgs chan string, results chan gosrc.Package) {
 	for pkg := range pkgs {
 		results <- getPackage(goroot, pkg)
 	}
