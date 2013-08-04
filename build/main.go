@@ -3,17 +3,21 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"labix.org/v2/mgo"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 var (
 	gopath      = flag.String("gopath", "./gopath", "GOPATH to use for builds")
 	numBuilders = flag.Int("builders", 8, "Number of concurrent builders")
+	mongo       = flag.String("mongo", "localhost", "MongoDB host")
+	database    = flag.String("database", "test", "MongoDB database")
 )
 
 var prefixes = []string{
@@ -62,11 +66,17 @@ func getWorld() ([]string, error) {
 	return world, nil
 }
 
-func getPackages(gopath string, pkgs []string) {
+func getPackages(collection *mgo.Collection, gopath string, pkgs []string) {
 	pkgChan := make(chan string)
+	results := make(chan Package)
 	for i := 0; i < *numBuilders; i++ {
-		go builder(gopath, pkgChan)
+		go builder(gopath, pkgChan, results)
 	}
+	go func() {
+		for p := range results {
+			collection.Insert(p)
+		}
+	}()
 	for _, p := range pkgs {
 		pkgChan <- p
 	}
@@ -82,27 +92,99 @@ func makeEnv(gopath string) []string {
 	return env
 }
 
-func getPackage(gopath, pkg string) {
+type Revision struct {
+	RepoType string
+	Revision string
+}
+
+func getRevision(gopath, pkg string) Revision {
+	path := filepath.Join(gopath, "src", pkg)
+	var rev Revision
+	switch {
+	case strings.HasPrefix(pkg, "github.com"):
+		rev.RepoType = "git"
+		rev.Revision = git.Revision(path)
+	case strings.HasPrefix(pkg, "bitbucket.org") || strings.HasPrefix(pkg, "code.google.com"):
+		rev.RepoType = "hg"
+		rev.Revision = hg.Revision(path)
+		if rev.Revision == "" {
+			rev.RepoType = "git"
+			rev.Revision = git.Revision(path)
+		}
+	case strings.HasPrefix(pkg, "launchpad.net"):
+		rev.RepoType = "bzr"
+		rev.Revision = bzr.Revision(path)
+	}
+	return rev
+}
+
+type Package struct {
+	Path     string
+	Date     time.Time
+	Revision Revision
+	Build    bool
+	Test     bool
+}
+
+func getPackage(gopath, pkg string) Package {
+	var (
+		build = false
+		test  = false
+		env   = makeEnv(gopath)
+		date  = time.Now()
+	)
 	log.Print("building ", pkg)
 	cmd := exec.Command("go", "get", "-u", pkg)
-	cmd.Env = makeEnv(gopath)
+	cmd.Env = env
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
+
 	if err != nil {
-		log.Println("failed: ", err)
+		log.Println("build failed: ", err)
 	} else {
-		log.Println("success")
+		log.Println("build success")
+		build = true
+		log.Print("testing", pkg)
+		cmd := exec.Command("go", "test", pkg)
+		cmd.Env = env
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
+		if err != nil {
+			log.Println("testing failed: ", err)
+		} else {
+			log.Println("testing success")
+			test = true
+		}
+	}
+	revision := getRevision(gopath, pkg)
+
+	return Package{
+		Path:     pkg,
+		Build:    build,
+		Test:     test,
+		Date:     date,
+		Revision: revision,
 	}
 }
 
-func builder(goroot string, pkgs chan string) {
+func builder(goroot string, pkgs chan string, results chan Package) {
 	for pkg := range pkgs {
-		getPackage(goroot, pkg)
+		results <- getPackage(goroot, pkg)
 	}
 }
 
 func main() {
+	session, err := mgo.Dial(*mongo)
+	if err != nil {
+		log.Fatal("failed to connect to database", err)
+	}
+	defer session.Close()
+	if err := session.Ping(); err != nil {
+		log.Fatal("database ping failed: ", err)
+	}
+
 	gopath, err := filepath.Abs(*gopath)
 	if err != nil {
 		log.Fatal("failed to determine GOPATH:", err)
@@ -113,5 +195,6 @@ func main() {
 		log.Fatal("failed to get package list", err)
 	}
 
-	getPackages(gopath, world)
+	collection := session.DB(*database).C("packages")
+	getPackages(collection, gopath, world)
 }
