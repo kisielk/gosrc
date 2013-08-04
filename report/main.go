@@ -22,6 +22,15 @@ const indexTemplate = `
 <html>
 <head>
 <title>Index</title>
+<style>
+.check {
+	color: green
+}
+
+.cross {
+	color: red
+}
+</style>
 </head>
 <body>
 <table>
@@ -35,8 +44,8 @@ const indexTemplate = `
 {{range .Packages}}
 <tr>
 <td><a href="/{{.ImportPath}}">{{.ImportPath}}</a></td>
-<td>{{.Build.Succeeded}}</td>
-<td>{{.Test.Succeeded}}</td>
+<td>{{if .Build.Succeeded}}<span class="check">✔</span>{{else}}<span class="cross">✘</span>{{end}}</td>
+<td>{{if .Test.Succeeded}}<span class="check">✔</span>{{else}}<span class="cross">✘</span>{{end}}</td>
 <td>{{.Vet.Errors}}</td>
 <td>{{.Repository.Revision | limit 10}}</td>
 </tr>
