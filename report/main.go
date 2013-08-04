@@ -5,6 +5,7 @@ import (
 	"github.com/kisielk/gosrc"
 	"html/template"
 	"labix.org/v2/mgo"
+	"labix.org/v2/mgo/bson"
 	"log"
 	"net/http"
 )
@@ -16,7 +17,7 @@ var (
 
 var session *mgo.Session
 
-const indexTemplateText = `
+const indexTemplate = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -24,12 +25,18 @@ const indexTemplateText = `
 </head>
 <body>
 <table>
-<tr><td>Import Path</td><td>Build</td><td>Test</td></tr>
+<tr>
+<th>Import Path</th>
+<th>Build</th>
+<th>Test</th>
+<th>Revision</th>
+</tr>
 {{range .Packages}}
 <tr>
-<td>{{.Path}}</td>
+<td><a href="/{{.Path}}">{{.Path}}</a></td>
 <td>{{.Build}}</td>
 <td>{{.Test}}</td>
+<td>{{.Repository.Revision | limit 10}}</td>
 </tr>
 {{end}}
 </table>
@@ -37,9 +44,38 @@ const indexTemplateText = `
 </html>
 `
 
-var indexTemplate = template.Must(template.New("index").Parse(indexTemplateText))
+const packageTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+<title>{{.Path}}</title>
+</head>
+<body>
+<h1>{{.Path}}</h1>
+</body>
+</html>
+`
 
-func index(w http.ResponseWriter, req *http.Request) {
+var templates = map[string]*template.Template{
+	"index":   parseTemplate("index", indexTemplate),
+	"package": parseTemplate("package", packageTemplate),
+}
+
+func parseTemplate(name, t string) *template.Template {
+	return template.Must(template.New(name).Funcs(funcMap).Parse(t))
+}
+
+var funcMap = template.FuncMap{
+	"limit": func(n int, s string) string {
+		runes := []rune(s)
+		if n > len(runes) {
+			n = len(runes)
+		}
+		return string(runes[:n])
+	},
+}
+
+func getIndex(w http.ResponseWriter, req *http.Request) {
 	collection := session.DB(*database).C("packages")
 	var packages []gosrc.Package
 	err := collection.Find(nil).Iter().All(&packages)
@@ -47,7 +83,25 @@ func index(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	indexTemplate.Execute(w, map[string]interface{}{"Packages": packages})
+	err = templates["index"].Execute(w, map[string]interface{}{"Packages": packages})
+	if err != nil {
+		log.Print(err)
+	}
+}
+
+func getPackage(w http.ResponseWriter, req *http.Request) {
+	c := session.DB(*database).C("packages")
+	var pkg gosrc.Package
+	path := req.URL.Path[1:]
+	err := c.Find(bson.M{"path": path}).One(&pkg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	err = templates["package"].Execute(w, pkg)
+	if err != nil {
+		log.Print(err)
+	}
 }
 
 func main() {
@@ -61,7 +115,8 @@ func main() {
 	}
 	session = s
 
-	http.HandleFunc("/index", index)
+	http.HandleFunc("/-/index", getIndex)
+	http.HandleFunc("/", getPackage)
 	err = http.ListenAndServe(":8080", nil)
 	if err != nil {
 		log.Fatal(err)
