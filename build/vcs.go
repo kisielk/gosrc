@@ -28,6 +28,10 @@ func (v VCS) Revision(dir string) string {
 	return v.vcsCmd(dir, v.revisionCmd)
 }
 
+func (v VCS) Root(dir string) string {
+	return v.vcsCmd(dir, v.rootCmd)
+}
+
 var git = VCS{
 	cmd:         "git",
 	revisionCmd: []string{"rev-parse", "--verify", "HEAD"},

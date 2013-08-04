@@ -92,38 +92,49 @@ func makeEnv(gopath string) []string {
 	return env
 }
 
-type Revision struct {
-	RepoType string
+type Repository struct {
+	Type     string
 	Revision string
+	Root     string
 }
 
-func getRevision(gopath, pkg string) Revision {
+func getRepository(gopath, pkg string) Repository {
 	path := filepath.Join(gopath, "src", pkg)
-	var rev Revision
+	var repo Repository
 	switch {
 	case strings.HasPrefix(pkg, "github.com"):
-		rev.RepoType = "git"
-		rev.Revision = git.Revision(path)
+		repo.Type = "git"
+		repo.Revision = git.Revision(path)
+		repo.Root = git.Root(path)
 	case strings.HasPrefix(pkg, "bitbucket.org") || strings.HasPrefix(pkg, "code.google.com"):
-		rev.RepoType = "hg"
-		rev.Revision = hg.Revision(path)
-		if rev.Revision == "" {
-			rev.RepoType = "git"
-			rev.Revision = git.Revision(path)
+		repo.Type = "hg"
+		repo.Revision = hg.Revision(path)
+		if repo.Revision == "" {
+			repo.Type = "git"
+			repo.Revision = git.Revision(path)
+			repo.Root = git.Root(path)
+		} else {
+			repo.Root = hg.Root(path)
 		}
 	case strings.HasPrefix(pkg, "launchpad.net"):
-		rev.RepoType = "bzr"
-		rev.Revision = bzr.Revision(path)
+		repo.Type = "bzr"
+		repo.Revision = bzr.Revision(path)
+		repo.Root = bzr.Root(path)
 	}
-	return rev
+	path, err := filepath.Rel(filepath.Join(gopath, "src"), repo.Root)
+	if err != nil {
+		path = repo.Root
+	}
+	repo.Root = path
+	return repo
 }
 
 type Package struct {
-	Path     string
-	Date     time.Time
-	Revision Revision
-	Build    bool
-	Test     bool
+	Path       string
+	Date       time.Time
+	Repository Repository
+	Build      bool
+	Test       bool
 }
 
 func getPackage(gopath, pkg string) Package {
@@ -158,14 +169,14 @@ func getPackage(gopath, pkg string) Package {
 			test = true
 		}
 	}
-	revision := getRevision(gopath, pkg)
+	repository := getRepository(gopath, pkg)
 
 	return Package{
-		Path:     pkg,
-		Build:    build,
-		Test:     test,
-		Date:     date,
-		Revision: revision,
+		Path:       pkg,
+		Build:      build,
+		Test:       test,
+		Date:       date,
+		Repository: repository,
 	}
 }
 
