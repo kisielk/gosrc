@@ -6,54 +6,85 @@ import (
 	"strings"
 )
 
-type VCS struct {
-	Cmd         string
-	revisionCmd []string
-	rootCmd     []string
-	urlCmd      []string
-}
-
-func (v VCS) vcsCmd(dir string, args []string) string {
+func vcsCmd(dir, cmd string, args ...string) string {
 	var buf bytes.Buffer
-	cmd := exec.Command(v.Cmd, args...)
-	cmd.Dir = dir
-	cmd.Stdout = &buf
-	err := cmd.Run()
+	c := exec.Command(cmd, args...)
+	c.Dir = dir
+	c.Stdout = &buf
+	err := c.Run()
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(buf.String())
 }
 
-func (v VCS) Revision(dir string) string {
-	return v.vcsCmd(dir, v.revisionCmd)
+type VCS interface {
+	Name() string
+	Revision(dir string) string
+	Root(dir string) string
+	URL(dir string) string
 }
 
-func (v VCS) Root(dir string) string {
-	return v.vcsCmd(dir, v.rootCmd)
+type git struct {
 }
 
-func (v VCS) URL(dir string) string {
-	return v.vcsCmd(dir, v.urlCmd)
+func (g git) Name() string {
+	return "git"
 }
 
-var git = VCS{
-	Cmd:         "git",
-	revisionCmd: []string{"rev-parse", "--verify", "HEAD"},
-	rootCmd:     []string{"rev-parse", "--show-toplevel"},
-	urlCmd:      []string{"config", "--get", "remote.origin.url"},
+func (g git) Revision(dir string) string {
+	return vcsCmd(dir, "git", "rev-parse", "--verify", "HEAD")
 }
 
-var hg = VCS{
-	Cmd:         "hg",
-	revisionCmd: []string{"id", "-i"},
-	rootCmd:     []string{"root"},
-	urlCmd:      []string{"paths", "default"},
+func (g git) Root(dir string) string {
+	return vcsCmd(dir, "git", "rev-parse", "--show-toplevel")
 }
 
-var bzr = VCS{
-	Cmd:         "bzr",
-	revisionCmd: []string{"revno"},
-	rootCmd:     []string{"root"},
-	urlCmd:      []string{""}, // FIXME: What do we do here?
+func (g git) URL(dir string) string {
+	return vcsCmd(dir, "git", "config", "--get", "remote.origin.url")
 }
+
+type hg struct {
+}
+
+func (h hg) Name() string {
+	return "hg"
+}
+
+func (h hg) Revision(dir string) string {
+	return vcsCmd(dir, "hg", "id", "-i")
+}
+
+func (h hg) Root(dir string) string {
+	return vcsCmd(dir, "hg", "root")
+}
+
+func (h hg) URL(dir string) string {
+	return vcsCmd(dir, "hg", "paths", "default")
+}
+
+type bzr struct {
+}
+
+func (b bzr) Name() string {
+	return "bzr"
+}
+
+func (b bzr) Revision(dir string) string {
+	return vcsCmd(dir, "bzr", "revno")
+}
+
+func (b bzr) Root(dir string) string {
+	return vcsCmd(dir, "bzr", "root")
+}
+
+func (b bzr) URL(dir string) string {
+	return ""
+}
+
+var (
+	Git    = git{}
+	Hg     = hg{}
+	Bzr    = bzr{}
+	AllVCS = []VCS{Git, Hg, Bzr}
+)

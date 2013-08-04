@@ -8,6 +8,7 @@ type Repository struct {
 	Type     string
 	Revision string
 	Root     string
+	URL      string
 }
 
 type Package struct {

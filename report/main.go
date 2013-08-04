@@ -40,6 +40,7 @@ const indexTemplate = `
 <th>Test</th>
 <th>Vet</th>
 <th>Revision</th>
+<th>Repository</th>
 </tr>
 {{range .Packages}}
 <tr>
@@ -48,6 +49,7 @@ const indexTemplate = `
 <td>{{if .Test.Succeeded}}<span class="check">✔</span>{{else}}<span class="cross">✘</span>{{end}}</td>
 <td>{{.Vet.Errors}}</td>
 <td>{{.Repository.Revision | limit 10}}</td>
+<td>{{.Repository.URL}}</td>
 </tr>
 {{end}}
 </table>

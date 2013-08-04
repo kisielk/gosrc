@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	gopath      = flag.String("gopath", "./gopath", "GOPATH to use for builds")
+	gopath      = flag.String("gopath", filepath.Join(os.TempDir(), "gopath"), "GOPATH to use for builds")
 	numBuilders = flag.Int("builders", 8, "Number of concurrent builders")
 	mongo       = flag.String("mongo", "localhost", "MongoDB host")
 	database    = flag.String("database", "test", "MongoDB database")
@@ -120,26 +120,15 @@ func makeEnv(gopath string) []string {
 
 func getRepository(gopath, pkg string) gosrc.Repository {
 	path := filepath.Join(gopath, "src", pkg)
-	var (
-		repo gosrc.Repository
-		vcs  []VCS
-	)
-	switch {
-	case strings.HasPrefix(pkg, "github.com"):
-		vcs = append(vcs, git)
-	case strings.HasPrefix(pkg, "bitbucket.org") || strings.HasPrefix(pkg, "code.google.com"):
-		vcs = append(vcs, hg)
-		vcs = append(vcs, git)
-	case strings.HasPrefix(pkg, "launchpad.net"):
-		vcs = append(vcs, bzr)
-	}
-	for _, v := range vcs {
+	var repo gosrc.Repository
+	for _, v := range AllVCS {
 		repo.Revision = v.Revision(path)
 		if repo.Revision == "" {
 			continue
 		}
-		repo.Type = v.Cmd
+		repo.Type = v.Name()
 		repo.Root = v.Root(path)
+		repo.URL = v.URL(path)
 		break
 	}
 	path, err := filepath.Rel(filepath.Join(gopath, "src"), repo.Root)
