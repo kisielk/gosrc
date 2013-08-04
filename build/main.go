@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -29,6 +30,28 @@ var prefixes = []string{
 	"code.google.com",
 	"bitbucket.org",
 }
+
+var (
+	goroot       = filepath.Clean(runtime.GOROOT())
+	gorootSrcPkg = filepath.Join(goroot, "src/pkg")
+)
+
+// stdPackages is a list of package names found in the standard library
+var stdPackages = func() []string {
+	var pkgs []string
+	filepath.Walk(gorootSrcPkg, func(path string, fi os.FileInfo, err error) error {
+		if err != nil || !fi.IsDir() || path == gorootSrcPkg {
+			return nil
+		}
+		relPath, err := filepath.Rel(gorootSrcPkg, path)
+		if err != nil {
+			return err
+		}
+		pkgs = append(pkgs, relPath)
+		return nil
+	})
+	return pkgs
+}()
 
 func validPrefix(s string) bool {
 	for _, p := range prefixes {
@@ -208,7 +231,17 @@ func getImports(gopath, pkg string) []string {
 		log.Println(pkg, "couldn't import:", err)
 		return imports
 	}
-	return buildPkg.Imports
+
+IMP:
+	for _, imp := range buildPkg.Imports {
+		for _, pkg := range stdPackages {
+			if imp == pkg {
+				continue IMP
+			}
+		}
+		imports = append(imports, imp)
+	}
+	return imports
 }
 
 func builder(goroot string, pkgs chan string, results chan gosrc.Package) {
