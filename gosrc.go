@@ -6,9 +6,15 @@ import (
 
 type Repository struct {
 	Type     string
-	Revision string
+	Revision Revision
 	Root     string
 	URL      string
+}
+
+type Revision struct {
+	Id     string
+	Date   time.Time
+	Author string
 }
 
 type Package struct {

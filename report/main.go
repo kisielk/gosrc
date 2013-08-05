@@ -49,7 +49,7 @@ const indexTemplate = `
 <td>{{if .Build.Succeeded}}<span class="check">✔</span>{{else}}<span class="cross">✘</span>{{end}}</td>
 <td>{{if .Test.Succeeded}}<span class="check">✔</span>{{else}}<span class="cross">✘</span>{{end}}</td>
 <td>{{.Vet.Errors}}</td>
-<td>{{.Repository.Revision | limit 10}}</td>
+<td>{{.Repository.Revision.Id | limit 10}}</td>
 <td><a href="/-/repo?r={{.Repository.URL}}">{{.Repository.URL}}</a></td>
 </tr>
 {{end}}
@@ -66,6 +66,17 @@ const packageTemplate = `
 </head>
 <body>
 <h1>{{.ImportPath}}</h1>
+<h2>Revision</h2>
+{{with .Repository.Revision}}
+<dl>
+<dt>Id</dt>
+<dd>{{.Id}}</dd>
+<dt>Author</dt>
+<dd>{{.Author}}</dd>
+<dt>Date</dt>
+<dd>{{.Date}}</dd>
+</dl>
+{{end}}
 <h2>Build Log</h2>
 <pre>
 {{.Build.Log}}

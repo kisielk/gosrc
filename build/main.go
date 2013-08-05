@@ -24,13 +24,6 @@ var (
 	database    = flag.String("database", "test", "MongoDB database")
 )
 
-var prefixes = []string{
-	"launchpad.net",
-	"github.com",
-	"code.google.com",
-	"bitbucket.org",
-}
-
 var (
 	goroot       = filepath.Clean(runtime.GOROOT())
 	gorootSrcPkg = filepath.Join(goroot, "src/pkg")
@@ -53,9 +46,9 @@ var stdPackages = func() []string {
 	return pkgs
 }()
 
-func validPrefix(s string) bool {
-	for _, p := range prefixes {
-		if strings.HasPrefix(s, p) {
+func isStd(pkg string) bool {
+	for _, p := range stdPackages {
+		if p == pkg {
 			return true
 		}
 	}
@@ -82,10 +75,9 @@ func getWorld() ([]string, error) {
 	}
 	log.Printf("found %d packages", len(w.Results))
 
-	for _, path := range w.Results {
-		p := path.Path
-		if validPrefix(p) {
-			world = append(world, p)
+	for _, result := range w.Results {
+		if !isStd(result.Path) {
+			world = append(world, result.Path)
 		}
 	}
 	log.Printf("%d packages after filtering", len(world))
@@ -123,7 +115,7 @@ func getRepository(gopath, pkg string) gosrc.Repository {
 	var repo gosrc.Repository
 	for _, v := range AllVCS {
 		repo.Revision = v.Revision(path)
-		if repo.Revision == "" {
+		if repo.Revision.Id == "" {
 			continue
 		}
 		repo.Type = v.Name()
@@ -221,14 +213,10 @@ func getImports(gopath, pkg string) []string {
 		return imports
 	}
 
-IMP:
 	for _, imp := range buildPkg.Imports {
-		for _, pkg := range stdPackages {
-			if imp == pkg {
-				continue IMP
-			}
+		if !isStd(imp) {
+			imports = append(imports, imp)
 		}
-		imports = append(imports, imp)
 	}
 	return imports
 }
