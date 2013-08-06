@@ -196,29 +196,27 @@ func getPackage(gopath, pkg string) gosrc.Package {
 		}
 		p.Vet.Log = vetOut
 
-		p.Imports = getImports(gopath, pkg)
+		p.BuildInfo = getBuildInfo(gopath, pkg)
 	}
 	p.Repository = getRepository(gopath, pkg)
 	return p
 }
 
-func getImports(gopath, pkg string) []string {
-	var imports []string
+func getBuildInfo(gopath, pkg string) gosrc.BuildInfo {
+	var buildInfo gosrc.BuildInfo
 	ctx := build.Default
 	ctx.GOPATH = gopath
 	ctx.UseAllFiles = true
 	buildPkg, err := ctx.Import(pkg, "", 0)
 	if err != nil {
 		log.Println(pkg, "couldn't import:", err)
-		return imports
+		return buildInfo
 	}
 
-	for _, imp := range buildPkg.Imports {
-		if !isStd(imp) {
-			imports = append(imports, imp)
-		}
+	return gosrc.BuildInfo{
+		Imports: buildPkg.Imports,
+		UsesCgo: len(buildPkg.CgoFiles) > 0,
 	}
-	return imports
 }
 
 func builder(goroot string, pkgs chan string, results chan gosrc.Package) {

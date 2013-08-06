@@ -25,6 +25,7 @@ type Package struct {
 	Build      Build
 	Test       Test
 	Vet        Vet
+	BuildInfo  BuildInfo
 }
 
 type Build struct {
@@ -40,4 +41,10 @@ type Test struct {
 type Vet struct {
 	Errors int
 	Log    string
+}
+
+// BuildInfo contains info from go/build
+type BuildInfo struct {
+	Imports []string
+	UsesCgo bool
 }

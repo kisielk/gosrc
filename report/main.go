@@ -91,7 +91,7 @@ const packageTemplate = `
 </pre>
 <h2>Imports</h2>
 <ul>
-{{range .Imports}}
+{{range .BuildInfo.Imports}}
 <li><a href="/{{.}}">{{.}}</a></li>
 {{end}}
 </ul>
