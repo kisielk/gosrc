@@ -25,6 +25,7 @@ type Package struct {
 	Build      Build
 	Test       Test
 	Vet        Vet
+	Errcheck   Errcheck
 	BuildInfo  BuildInfo
 }
 
@@ -39,6 +40,11 @@ type Test struct {
 }
 
 type Vet struct {
+	Errors int
+	Log    string
+}
+
+type Errcheck struct {
 	Errors int
 	Log    string
 }

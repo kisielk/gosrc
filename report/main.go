@@ -40,6 +40,7 @@ const indexTemplate = `
 <th>Build</th>
 <th>Test</th>
 <th>Vet</th>
+<th>Errcheck</th>
 <th>Revision</th>
 <th>Repository</th>
 </tr>
@@ -49,6 +50,7 @@ const indexTemplate = `
 <td>{{if .Build.Succeeded}}<span class="check">✔</span>{{else}}<span class="cross">✘</span>{{end}}</td>
 <td>{{if .Test.Succeeded}}<span class="check">✔</span>{{else}}<span class="cross">✘</span>{{end}}</td>
 <td>{{.Vet.Errors}}</td>
+<td>{{.Errchechk.Errors}}</td>
 <td>{{.Repository.Revision.Id | limit 10}}</td>
 <td><a href="/-/repo?r={{.Repository.URL}}">{{.Repository.URL}}</a></td>
 </tr>
@@ -88,6 +90,10 @@ const packageTemplate = `
 <h2>Vet Log</h2>
 <pre>
 {{.Vet.Log}}
+</pre>
+<h2>Errcheck Log</h2>
+<pre>
+{{.Errcheck.Log}}
 </pre>
 <h2>Imports</h2>
 <ul>

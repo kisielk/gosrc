@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -161,6 +162,26 @@ func goVet(gopath, pkg string) (string, error) {
 	return out.String(), err
 }
 
+func errcheck(gopath, pkg string) (string, error) {
+	var out bytes.Buffer
+	cmd := exec.Command("errcheck", pkg)
+	cmd.Env = makeEnv(gopath)
+	cmd.Stdout = &out
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if e1, ok := err.(*exec.ExitError); ok && exitStatus(e1) == 1 {
+		// errcheck returns 1 if there were errors found
+		err = nil
+	}
+	return out.String(), err
+}
+
+// exitStatus extracts the exit status from an ExitError
+func exitStatus(err *exec.ExitError) int {
+	return err.Sys().(syscall.WaitStatus).ExitStatus()
+
+}
+
 func getPackage(gopath, pkg string) gosrc.Package {
 	p := gosrc.Package{
 		ImportPath: pkg,
@@ -195,6 +216,16 @@ func getPackage(gopath, pkg string) gosrc.Package {
 			p.Vet.Errors = strings.Count(vetOut, "\n")
 		}
 		p.Vet.Log = vetOut
+
+		log.Println(pkg, "errchecking")
+		errcheckOut, err := errcheck(gopath, pkg)
+		if err != nil {
+			log.Println(pkg, "errcheck failed:", err)
+		} else {
+			log.Println(pkg, "errcheck succeeded")
+			p.Errcheck.Errors = strings.Count(errcheckOut, "\n")
+		}
+		p.Errcheck.Log = errcheckOut
 
 		p.BuildInfo = getBuildInfo(gopath, pkg)
 	}
