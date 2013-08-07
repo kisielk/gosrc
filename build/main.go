@@ -30,9 +30,9 @@ var (
 	gorootSrcPkg = filepath.Join(goroot, "src/pkg")
 )
 
-// stdPackages is a list of package names found in the standard library
-var stdPackages = func() []string {
-	var pkgs []string
+// isStd is a boolean map of packages in the Go standard library
+var isStd = func() map[string]bool {
+	pkgs := make(map[string]bool)
 	filepath.Walk(gorootSrcPkg, func(path string, fi os.FileInfo, err error) error {
 		if err != nil || !fi.IsDir() || path == gorootSrcPkg {
 			return nil
@@ -41,20 +41,11 @@ var stdPackages = func() []string {
 		if err != nil {
 			return err
 		}
-		pkgs = append(pkgs, relPath)
+		pkgs[relPath] = true
 		return nil
 	})
 	return pkgs
 }()
-
-func isStd(pkg string) bool {
-	for _, p := range stdPackages {
-		if p == pkg {
-			return true
-		}
-	}
-	return false
-}
 
 func getWorld() ([]string, error) {
 	var world []string
@@ -77,7 +68,7 @@ func getWorld() ([]string, error) {
 	log.Printf("found %d packages", len(w.Results))
 
 	for _, result := range w.Results {
-		if !isStd(result.Path) {
+		if !isStd[result.Path] {
 			world = append(world, result.Path)
 		}
 	}
