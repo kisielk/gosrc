@@ -77,18 +77,42 @@ func getWorld() ([]string, error) {
 }
 
 func getPackages(collection *mgo.Collection, gopath string, pkgs []string) {
-	pkgChan := make(chan string)
-	results := make(chan gosrc.Package)
+	var (
+		pkgChan = make(chan string)
+		results = make(chan gosrc.Package)
+		queue   = make(map[string]bool)
+		visited = make(map[string]bool)
+	)
+
 	for i := 0; i < *numBuilders; i++ {
 		go builder(gopath, pkgChan, results)
 	}
-	go func() {
-		for p := range results {
-			collection.Insert(p)
-		}
-	}()
+
 	for _, p := range pkgs {
-		pkgChan <- p
+		queue[p] = true
+	}
+
+	for {
+		// pick a pseudo-random package name from the queue.
+		for p := range queue {
+			select {
+			case result := <-results:
+				collection.Insert(result)
+				for _, imp := range result.BuildInfo.Imports {
+					if !visited[imp] {
+						queue[imp] = true
+					}
+				}
+			case pkgChan <- p:
+				// if a builder has accepted the package pop it from the queue
+				// and add it to the visited list.
+				delete(queue, p)
+				visited[p] = true
+			}
+
+			// restart the loop so we select a new pseudo-random package.
+			break
+		}
 	}
 }
 
