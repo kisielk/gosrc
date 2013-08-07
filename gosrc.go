@@ -1,6 +1,8 @@
 package gosrc
 
 import (
+	"encoding/json"
+	"net/http"
 	"time"
 )
 
@@ -53,4 +55,32 @@ type Errcheck struct {
 type BuildInfo struct {
 	Imports []string
 	UsesCgo bool
+}
+
+// GodocPackages retrieves a list of packages in the godoc.org index
+func GodocPackages() ([]string, error) {
+	var results []string
+
+	resp, err := http.Get("http://api.godoc.org/packages")
+	if err != nil {
+		return results, err
+	}
+	defer resp.Body.Close()
+
+	dec := json.NewDecoder(resp.Body)
+	var w struct {
+		Results []struct {
+			Path string `json:"path"`
+		} `json:"results"`
+	}
+	err = dec.Decode(&w)
+	if err != nil {
+		return results, err
+	}
+
+	for _, result := range w.Results {
+		results = append(results, result.Path)
+	}
+
+	return results, nil
 }

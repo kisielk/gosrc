@@ -1,14 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
-	"encoding/json"
 	"flag"
 	"github.com/kisielk/gosrc"
 	"go/build"
+	"io"
 	"labix.org/v2/mgo"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,35 +46,6 @@ var isStd = func() map[string]bool {
 	})
 	return pkgs
 }()
-
-func getWorld() ([]string, error) {
-	var world []string
-	resp, err := http.Get("http://api.godoc.org/packages")
-	if err != nil {
-		return world, err
-	}
-	defer resp.Body.Close()
-
-	dec := json.NewDecoder(resp.Body)
-	var w struct {
-		Results []struct {
-			Path string `json:"path"`
-		} `json:"results"`
-	}
-	err = dec.Decode(&w)
-	if err != nil {
-		return world, err
-	}
-	log.Printf("found %d packages", len(w.Results))
-
-	for _, result := range w.Results {
-		if !isStd[result.Path] {
-			world = append(world, result.Path)
-		}
-	}
-	log.Printf("%d packages after filtering", len(world))
-	return world, nil
-}
 
 func getPackages(collection *mgo.Collection, gopath string, pkgs []string) {
 	var (
@@ -271,26 +242,45 @@ func builder(goroot string, pkgs chan string, results chan gosrc.Package) {
 	}
 }
 
+func readLines(src io.Reader) ([]string, error) {
+	var lines []string
+	scanner := bufio.NewScanner(src)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return lines, scanner.Err()
+}
+
 func main() {
+	flag.Parse()
+	packages := flag.Arg(0)
+	if packages == "" {
+		log.Fatalf("usage: %s [package list file]", os.Args[0])
+	}
+
+	file, err := os.Open(packages)
+	if err != nil {
+		log.Fatalln("failed to open packages file:", err)
+	}
+	pkgList, err := readLines(file)
+	if err != nil {
+		log.Fatalln("failed to read packages:", err)
+	}
+
 	session, err := mgo.Dial(*mongo)
 	if err != nil {
-		log.Fatal("failed to connect to database", err)
+		log.Fatalln("failed to connect to database:", err)
 	}
 	defer session.Close()
 	if err := session.Ping(); err != nil {
-		log.Fatal("database ping failed: ", err)
+		log.Fatalln("database ping failed:", err)
 	}
 
 	gopath, err := filepath.Abs(*gopath)
 	if err != nil {
-		log.Fatal("failed to determine GOPATH:", err)
-	}
-
-	world, err := getWorld()
-	if err != nil {
-		log.Fatal("failed to get package list", err)
+		log.Fatalln("failed to determine GOPATH:", err)
 	}
 
 	collection := session.DB(*database).C("packages")
-	getPackages(collection, gopath, world)
+	getPackages(collection, gopath, pkgList)
 }
