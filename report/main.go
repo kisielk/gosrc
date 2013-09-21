@@ -14,6 +14,7 @@ import (
 var (
 	mongo    = flag.String("mongo", "localhost", "MongoDB host")
 	database = flag.String("database", "test", "MongoDB database")
+	httpAddr = flag.String("http", ":8080", "HTTP listening address")
 )
 
 var session *mgo.Session
@@ -50,7 +51,7 @@ const indexTemplate = `
 <td>{{if .Build.Succeeded}}<span class="check">✔</span>{{else}}<span class="cross">✘</span>{{end}}</td>
 <td>{{if .Test.Succeeded}}<span class="check">✔</span>{{else}}<span class="cross">✘</span>{{end}}</td>
 <td>{{.Vet.Errors}}</td>
-<td>{{.Errchechk.Errors}}</td>
+<td>{{.Errcheck.Errors}}</td>
 <td>{{.Repository.Revision.Id | limit 10}}</td>
 <td><a href="/-/repo?r={{.Repository.URL}}">{{.Repository.URL}}</a></td>
 </tr>
@@ -195,18 +196,18 @@ const (
 func main() {
 	s, err := mgo.Dial(*mongo)
 	if err != nil {
-		log.Fatal("failed to connect to database", err)
+		log.Fatalln("failed to connect to database:", err)
 	}
 	defer s.Close()
 	if err := s.Ping(); err != nil {
-		log.Fatal("database ping failed: ", err)
+		log.Fatalln("database ping failed:", err)
 	}
 	session = s
 
 	http.HandleFunc(indexPath, getIndex)
 	http.HandleFunc(repoPath, getRepo)
 	http.HandleFunc("/", getPackage)
-	err = http.ListenAndServe(":8080", nil)
+	err = http.ListenAndServe(*httpAddr, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
