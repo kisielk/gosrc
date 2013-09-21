@@ -9,12 +9,15 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path"
+	"path/filepath"
 )
 
 var (
 	mongo    = flag.String("mongo", "localhost", "MongoDB host")
 	database = flag.String("database", "test", "MongoDB database")
 	httpAddr = flag.String("http", ":8080", "HTTP listening address")
+	gopath   = flag.String("gopath", "/tmp/gosrc/gopath", "GOPATH where build files are located")
 )
 
 var session *mgo.Session
@@ -69,6 +72,7 @@ const packageTemplate = `
 </head>
 <body>
 <h1>{{.ImportPath}}</h1>
+<a href="/-/files/{{.ImportPath}}">Files</a>
 <h2>Revision</h2>
 {{with .Repository.Revision}}
 <dl>
@@ -128,15 +132,26 @@ const filesTemplate = `
 <html>
 <head>
 <title> Files for {{.ImportPath}}</title>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
 </head>
 <body>
-<div>
-<select name="file">
+<div id="header">
+<select id="files" name="file" onChange="load(this.value)">
 {{range .BuildInfo.GoFiles}}
 <option value="{{.}}">{{.}}</option>
 {{end}}
 </select>
 </div>
+<div id="content">
+</div>
+<script>
+function load(file) {
+	$("#content").load("/-/file/{{.ImportPath}}/" + file);
+}
+window.onload = function() {
+	$("#files").change();	
+}
+</script>
 </body>
 </html>
 `
@@ -205,7 +220,6 @@ func getRepo(w http.ResponseWriter, req *http.Request) {
 }
 
 func getFiles(w http.ResponseWriter, req *http.Request) {
-	log.Println("getFiles")
 	pkg, err := findPackage(req.URL.Path[len(filesPath):])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -215,6 +229,18 @@ func getFiles(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Print(err)
 	}
+}
+
+func getFile(w http.ResponseWriter, req *http.Request) {
+	fileName := path.Base(req.URL.Path)
+	pkgName := req.URL.Path[len(filePath) : len(req.URL.Path)-len(fileName)-1]
+	pkg, err := findPackage(pkgName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	path := filepath.Join(*gopath, "src", pkg.ImportPath, fileName)
+	http.ServeFile(w, req, path)
 }
 
 func findPackage(path string) (gosrc.Package, error) {
@@ -228,6 +254,7 @@ const (
 	indexPath = "/-/index"
 	repoPath  = "/-/repo/"
 	filesPath = "/-/files/"
+	filePath  = "/-/file/"
 )
 
 func main() {
@@ -244,6 +271,7 @@ func main() {
 	http.HandleFunc(indexPath, getIndex)
 	http.HandleFunc(repoPath, getRepo)
 	http.HandleFunc(filesPath, getFiles)
+	http.HandleFunc(filePath, getFile)
 	http.HandleFunc("/", getPackage)
 	err = http.ListenAndServe(*httpAddr, nil)
 	if err != nil {

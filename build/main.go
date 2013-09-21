@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	gopath      = flag.String("gopath", filepath.Join(os.TempDir(), "gopath"), "GOPATH to use for builds")
+	gopath      = flag.String("gopath", "/tmp/gosrc/gopath", "GOPATH to use for builds")
 	numBuilders = flag.Int("builders", 8, "Number of concurrent builders")
 	mongo       = flag.String("mongo", "localhost", "MongoDB host")
 	database    = flag.String("database", "test", "MongoDB database")
