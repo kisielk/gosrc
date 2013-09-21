@@ -55,6 +55,7 @@ type Errcheck struct {
 type BuildInfo struct {
 	Imports []string
 	UsesCgo bool
+	GoFiles []string
 }
 
 // GodocPackages retrieves a list of packages in the godoc.org index

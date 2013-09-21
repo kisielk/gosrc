@@ -123,10 +123,29 @@ const repoTemplate = `
 </html>
 `
 
+const filesTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+<title> Files for {{.ImportPath}}</title>
+</head>
+<body>
+<div>
+<select name="file">
+{{range .BuildInfo.GoFiles}}
+<option value="{{.}}">{{.}}</option>
+{{end}}
+</select>
+</div>
+</body>
+</html>
+`
+
 var templates = map[string]*template.Template{
 	"index":   parseTemplate("index", indexTemplate),
 	"package": parseTemplate("package", packageTemplate),
 	"repo":    parseTemplate("repo", repoTemplate),
+	"files":   parseTemplate("files", filesTemplate),
 }
 
 func parseTemplate(name, t string) *template.Template {
@@ -159,12 +178,9 @@ func getIndex(w http.ResponseWriter, req *http.Request) {
 }
 
 func getPackage(w http.ResponseWriter, req *http.Request) {
-	c := session.DB(*database).C("packages")
-	var pkg gosrc.Package
-	path := req.URL.Path[1:]
-	err := c.Find(bson.M{"importpath": path}).One(&pkg)
+	pkg, err := findPackage(req.URL.Path[1:])
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	err = templates["package"].Execute(w, pkg)
@@ -188,9 +204,30 @@ func getRepo(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func getFiles(w http.ResponseWriter, req *http.Request) {
+	log.Println("getFiles")
+	pkg, err := findPackage(req.URL.Path[len(filesPath):])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	err = templates["files"].Execute(w, pkg)
+	if err != nil {
+		log.Print(err)
+	}
+}
+
+func findPackage(path string) (gosrc.Package, error) {
+	c := session.DB(*database).C("packages")
+	var pkg gosrc.Package
+	err := c.Find(bson.M{"importpath": path}).One(&pkg)
+	return pkg, err
+}
+
 const (
 	indexPath = "/-/index"
-	repoPath  = "/-/repo"
+	repoPath  = "/-/repo/"
+	filesPath = "/-/files/"
 )
 
 func main() {
@@ -206,6 +243,7 @@ func main() {
 
 	http.HandleFunc(indexPath, getIndex)
 	http.HandleFunc(repoPath, getRepo)
+	http.HandleFunc(filesPath, getFiles)
 	http.HandleFunc("/", getPackage)
 	err = http.ListenAndServe(*httpAddr, nil)
 	if err != nil {

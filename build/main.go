@@ -233,6 +233,7 @@ func getBuildInfo(gopath, pkg string) gosrc.BuildInfo {
 	return gosrc.BuildInfo{
 		Imports: buildPkg.Imports,
 		UsesCgo: len(buildPkg.CgoFiles) > 0,
+		GoFiles: buildPkg.GoFiles,
 	}
 }
 
