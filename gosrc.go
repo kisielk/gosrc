@@ -26,6 +26,7 @@ type Package struct {
 	Repository Repository
 	Build      Build
 	Test       Test
+	Gofmt      Gofmt
 	Vet        Vet
 	Errcheck   Errcheck
 	BuildInfo  BuildInfo
@@ -39,6 +40,10 @@ type Build struct {
 type Test struct {
 	Succeeded bool
 	Log       string
+}
+
+type Gofmt struct {
+	Differences int
 }
 
 type Vet struct {

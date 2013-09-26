@@ -118,6 +118,17 @@ func getRepository(gopath, pkg string) gosrc.Repository {
 	return repo
 }
 
+func goFmt(gopath, pkg string) (int, error) {
+	var out bytes.Buffer
+	cmd := exec.Command("gofmt", "-l", filepath.Join(gopath, "src", pkg))
+	cmd.Env = makeEnv(gopath)
+	cmd.Stdout = &out
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	n := bytes.Count(out.Bytes(), []byte("\n"))
+	return n, err
+}
+
 func goGet(gopath, pkg string) (string, error) {
 	var out bytes.Buffer
 	cmd := exec.Command("go", "get", "-u", pkg)
@@ -178,10 +189,19 @@ func getPackage(gopath, pkg string) gosrc.Package {
 	buildOut, err := goGet(gopath, pkg)
 	p.Build.Log = buildOut
 	if err != nil {
-		log.Println(pkg, " build failed:", err)
+		log.Println(pkg, "build failed:", err)
 	} else {
-		log.Println(pkg, " build succeeded")
+		log.Println(pkg, "build succeeded")
 		p.Build.Succeeded = true
+
+		log.Println(pkg, "gofmt")
+		n, err := goFmt(gopath, pkg)
+		if err != nil {
+			log.Println(pkg, "gofmt failed:", err)
+		} else {
+			log.Println(pkg, "gofmt succeeded:", err)
+			p.Gofmt.Differences = n
+		}
 
 		log.Println(pkg, "testing")
 		testOut, err := goTest(gopath, pkg)
