@@ -2,6 +2,8 @@ package gosrc
 
 import (
 	"encoding/json"
+	"fmt"
+	"labix.org/v2/mgo"
 	"net/http"
 	"time"
 )
@@ -89,4 +91,37 @@ func GodocPackages() ([]string, error) {
 	}
 
 	return results, nil
+}
+
+type Collection interface {
+	Insert(pkg Package) error
+}
+
+type MongoCollection struct {
+	session    *mgo.Session
+	collection *mgo.Collection
+}
+
+func NewMongoCollection(host, db string) (*MongoCollection, error) {
+	m := MongoCollection{}
+
+	session, err := mgo.Dial(host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %s", err)
+	}
+	if err := session.Ping(); err != nil {
+		return nil, fmt.Errorf("database ping failed: %s", err)
+	}
+
+	m.collection = session.DB(db).C("packages")
+	return &m, nil
+}
+
+func (c *MongoCollection) Close() error {
+	c.session.Close()
+	return nil
+}
+
+func (c *MongoCollection) Insert(pkg Package) error {
+	return c.collection.Insert(pkg)
 }

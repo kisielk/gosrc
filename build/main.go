@@ -7,7 +7,6 @@ import (
 	"github.com/kisielk/gosrc"
 	"go/build"
 	"io"
-	"labix.org/v2/mgo"
 	"log"
 	"os"
 	"os/exec"
@@ -47,7 +46,7 @@ var isStd = func() map[string]bool {
 	return pkgs
 }()
 
-func getPackages(collection *mgo.Collection, gopath string, pkgs []string) {
+func getPackages(collection gosrc.Collection, gopath string, pkgs []string) {
 	var (
 		pkgChan = make(chan string)
 		results = make(chan gosrc.Package)
@@ -68,7 +67,13 @@ func getPackages(collection *mgo.Collection, gopath string, pkgs []string) {
 		for p := range queue {
 			select {
 			case result := <-results:
-				collection.Insert(result)
+				err := collection.Insert(result)
+				if err != nil {
+					log.Println(p, "failed to insert results:", err)
+					queue[p] = true
+					visited[p] = false
+					continue
+				}
 				for _, imp := range result.BuildInfo.Imports {
 					if !visited[imp] {
 						queue[imp] = true
@@ -288,20 +293,15 @@ func main() {
 		log.Fatalln("failed to read packages:", err)
 	}
 
-	session, err := mgo.Dial(*mongo)
-	if err != nil {
-		log.Fatalln("failed to connect to database:", err)
-	}
-	defer session.Close()
-	if err := session.Ping(); err != nil {
-		log.Fatalln("database ping failed:", err)
-	}
-
 	gopath, err := filepath.Abs(*gopath)
 	if err != nil {
 		log.Fatalln("failed to determine GOPATH:", err)
 	}
 
-	collection := session.DB(*database).C("packages")
+	collection, err := gosrc.NewMongoCollection(*mongo, *database)
+	if err != nil {
+		log.Fatalln("failed to connect to MongoDB:", err)
+	}
 	getPackages(collection, gopath, pkgList)
+
 }
