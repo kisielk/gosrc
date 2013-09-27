@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"flag"
 	"github.com/kisielk/gosrc"
 	"go/build"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -278,15 +276,6 @@ func builder(goroot string, pkgs chan string, results chan gosrc.Package) {
 	}
 }
 
-func readLines(src io.Reader) ([]string, error) {
-	var lines []string
-	scanner := bufio.NewScanner(src)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	return lines, scanner.Err()
-}
-
 func main() {
 	flag.Parse()
 	packages := flag.Arg(0)
@@ -294,11 +283,7 @@ func main() {
 		log.Fatalf("usage: %s [package list file]", os.Args[0])
 	}
 
-	file, err := os.Open(packages)
-	if err != nil {
-		log.Fatalln("failed to open packages file:", err)
-	}
-	pkgList, err := readLines(file)
+	pkgList, err := gosrc.FilePackages(packages)
 	if err != nil {
 		log.Fatalln("failed to read packages:", err)
 	}

@@ -1,11 +1,13 @@
 package gosrc
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"go/build"
 	"labix.org/v2/mgo"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -76,7 +78,7 @@ func NewBuildInfo(pkg *build.Package) BuildInfo {
 	}
 }
 
-// GodocPackages retrieves a list of packages in the godoc.org index
+// GodocPackages retrieves a list of packages in the godoc.org index.
 func GodocPackages() ([]string, error) {
 	var results []string
 
@@ -102,6 +104,20 @@ func GodocPackages() ([]string, error) {
 	}
 
 	return results, nil
+}
+
+// FilePackages reads a list of packages from a file.
+func FilePackages(path string) ([]string, error) {
+	var lines []string
+	file, err := os.Open(path)
+	if err != nil {
+		return lines, fmt.Errorf("failed to open packages file: %d", err)
+	}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return lines, scanner.Err()
 }
 
 type Collection interface {
