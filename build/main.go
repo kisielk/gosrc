@@ -18,9 +18,9 @@ import (
 )
 
 var (
-	gopath      = flag.String("gopath", "/tmp/gosrc/gopath", "GOPATH to use for builds")
+	gopath      = flag.String("gopath", filepath.Join(os.TempDir(), "gosrc/gopath"), "GOPATH to use for builds")
 	numBuilders = flag.Int("builders", 8, "Number of concurrent builders")
-	mongo       = flag.String("mongo", "localhost", "MongoDB host")
+	mongo       = flag.String("mongo", "", "MongoDB host")
 	database    = flag.String("database", "test", "MongoDB database")
 )
 
@@ -134,9 +134,15 @@ func goFmt(gopath, pkg string) (int, error) {
 	return n, err
 }
 
-func goGet(gopath, pkg string) (string, error) {
+func download(gopath, pkg string) error {
+	cmd := exec.Command("go", "get", "-d", "-u", pkg)
+	cmd.Env = makeEnv(gopath)
+	return cmd.Run()
+}
+
+func buildPkg(gopath, pkg string) (string, error) {
 	var out bytes.Buffer
-	cmd := exec.Command("go", "get", "-u", pkg)
+	cmd := exec.Command("go", "get", pkg)
 	cmd.Env = makeEnv(gopath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = &out
@@ -184,14 +190,37 @@ func exitStatus(err *exec.ExitError) int {
 
 }
 
+func importPkg(gopath, pkg string) *build.Package {
+	ctx := build.Default
+	ctx.GOPATH = gopath
+	ctx.UseAllFiles = true
+	buildPkg, err := ctx.Import(pkg, "", 0)
+	if err != nil {
+		log.Println(pkg, "couldn't import:", err)
+		return nil
+	}
+	return buildPkg
+}
+
 func getPackage(gopath, pkg string) gosrc.Package {
 	p := gosrc.Package{
 		ImportPath: pkg,
 		Date:       time.Now(),
 	}
 
-	log.Println(pkg, "building")
-	buildOut, err := goGet(gopath, pkg)
+	log.Println(pkg, "downloading")
+	err := download(gopath, pkg)
+	if err != nil {
+		return p
+	}
+
+	impPkg := importPkg(gopath, pkg)
+	if impPkg == nil || impPkg.Goroot {
+		return p
+	}
+	p.BuildInfo = gosrc.NewBuildInfo(impPkg)
+
+	buildOut, err := buildPkg(gopath, pkg)
 	p.Build.Log = buildOut
 	if err != nil {
 		log.Println(pkg, "build failed:", err)
@@ -204,7 +233,7 @@ func getPackage(gopath, pkg string) gosrc.Package {
 		if err != nil {
 			log.Println(pkg, "gofmt failed:", err)
 		} else {
-			log.Println(pkg, "gofmt succeeded:", err)
+			log.Println(pkg, "gofmt succeeded")
 			p.Gofmt.Differences = n
 		}
 
@@ -238,28 +267,9 @@ func getPackage(gopath, pkg string) gosrc.Package {
 		}
 		p.Errcheck.Log = errcheckOut
 
-		p.BuildInfo = getBuildInfo(gopath, pkg)
 	}
 	p.Repository = getRepository(gopath, pkg)
 	return p
-}
-
-func getBuildInfo(gopath, pkg string) gosrc.BuildInfo {
-	var buildInfo gosrc.BuildInfo
-	ctx := build.Default
-	ctx.GOPATH = gopath
-	ctx.UseAllFiles = true
-	buildPkg, err := ctx.Import(pkg, "", 0)
-	if err != nil {
-		log.Println(pkg, "couldn't import:", err)
-		return buildInfo
-	}
-
-	return gosrc.BuildInfo{
-		Imports: buildPkg.Imports,
-		UsesCgo: len(buildPkg.CgoFiles) > 0,
-		GoFiles: buildPkg.GoFiles,
-	}
 }
 
 func builder(goroot string, pkgs chan string, results chan gosrc.Package) {
@@ -298,10 +308,21 @@ func main() {
 		log.Fatalln("failed to determine GOPATH:", err)
 	}
 
-	collection, err := gosrc.NewMongoCollection(*mongo, *database)
-	if err != nil {
-		log.Fatalln("failed to connect to MongoDB:", err)
+	var collection gosrc.Collection
+	if *mongo != "" {
+		var err error
+		collection, err = gosrc.NewMongoCollection(*mongo, *database)
+		if err != nil {
+			log.Fatalln("failed to connect to MongoDB:", err)
+		}
+	} else {
+		collection = gosrc.NewMemoryCollection()
 	}
+
 	getPackages(collection, gopath, pkgList)
 
+	if *mongo == "" {
+		c := collection.(*gosrc.MemoryCollection)
+		log.Println(c.Dump())
+	}
 }

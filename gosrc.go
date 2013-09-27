@@ -3,6 +3,7 @@ package gosrc
 import (
 	"encoding/json"
 	"fmt"
+	"go/build"
 	"labix.org/v2/mgo"
 	"net/http"
 	"time"
@@ -22,6 +23,7 @@ type Revision struct {
 }
 
 type Package struct {
+	Downloaded bool
 	ImportPath string
 	Imports    []string
 	Date       time.Time
@@ -63,6 +65,15 @@ type BuildInfo struct {
 	Imports []string
 	UsesCgo bool
 	GoFiles []string
+}
+
+// NewBuildInfo creates a BuildInfo from a build.Package
+func NewBuildInfo(pkg *build.Package) BuildInfo {
+	return BuildInfo{
+		Imports: pkg.Imports,
+		UsesCgo: len(pkg.CgoFiles) > 0,
+		GoFiles: pkg.GoFiles,
+	}
 }
 
 // GodocPackages retrieves a list of packages in the godoc.org index
@@ -124,4 +135,21 @@ func (c *MongoCollection) Close() error {
 
 func (c *MongoCollection) Insert(pkg Package) error {
 	return c.collection.Insert(pkg)
+}
+
+type MemoryCollection struct {
+	Packages map[string]Package
+}
+
+func NewMemoryCollection() *MemoryCollection {
+	return &MemoryCollection{make(map[string]Package)}
+}
+
+func (c *MemoryCollection) Insert(pkg Package) error {
+	c.Packages[pkg.ImportPath] = pkg
+	return nil
+}
+
+func (c *MemoryCollection) Dump() ([]byte, error) {
+	return json.MarshalIndent(c.Packages, "", "\t")
 }
