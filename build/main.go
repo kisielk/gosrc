@@ -52,71 +52,77 @@ func getPackages(collection gosrc.Collection, gopath string, pkgs []string) {
 	)
 
 	go downloader(gopath, pkgs, downloadResults)
-	go func() {
-		for {
-			var (
-				next    string
-				queue   = make(map[string]bool)
-				visited = make(map[string]bool)
-			)
-
-			// Pop a random package from the queue
-			for p := range queue {
-				next = p
-				break
-			}
-
-			storePackage := func(result gosrc.Package) {
-				err := collection.Insert(result)
-				if err != nil {
-					log.Println(result, "failed to insert results:", err)
-					queue[result.ImportPath] = true
-					visited[result.ImportPath] = false
-					return
-				}
-
-				for _, imp := range result.BuildInfo.Imports {
-					if !visited[imp] {
-						queue[imp] = true
-					}
-				}
-			}
-
-			queuePackage := func(result downloadResult) {
-				if result.err != nil {
-					log.Println(result.pkg, "failed to download:", result.err)
-				} else {
-					queue[result.pkg] = true
-				}
-			}
-
-			if next != "" {
-				select {
-				case result := <-downloadResults:
-					queuePackage(result)
-				case result := <-buildResults:
-					storePackage(result)
-				case buildRequests <- next:
-					// if a builder has accepted the package pop it from the queue
-					// and add it to the visited list.
-					delete(queue, next)
-					visited[next] = true
-				}
-			} else {
-				select {
-				case result := <-downloadResults:
-					queuePackage(result)
-				case result := <-buildResults:
-					storePackage(result)
-				}
-			}
-
-		}
-	}()
 	for i := 0; i < *numBuilders; i++ {
 		go builder(gopath, buildRequests, buildResults)
 	}
-	select {}
+
+	var (
+		queue    = make(map[string]bool)
+		visited  = make(map[string]bool)
+		building = 0
+	)
+
+	for {
+		var next string
+
+		// Pop a random package from the queue
+		for p := range queue {
+			next = p
+			break
+		}
+
+		storePackage := func(result gosrc.Package) {
+			building--
+			err := collection.Insert(result)
+			if err != nil {
+				log.Println(result, "failed to insert results:", err)
+				queue[result.ImportPath] = true
+				visited[result.ImportPath] = false
+				return
+			}
+
+			for _, imp := range result.BuildInfo.Imports {
+				if !visited[imp] {
+					queue[imp] = true
+				}
+			}
+		}
+
+		queuePackage := func(result downloadResult) {
+			if result.err != nil {
+				log.Println(result.pkg, "failed to download:", result.err)
+			} else {
+				log.Println(result.pkg, "downloaded")
+				queue[result.pkg] = true
+			}
+		}
+
+		buildPackage := func(name string) {
+			// if a builder has accepted the package pop it from the queue
+			// and add it to the visited list.
+			delete(queue, next)
+			visited[next] = true
+			building++
+		}
+
+		if next != "" {
+			select {
+			case result := <-downloadResults:
+				queuePackage(result)
+			case result := <-buildResults:
+				storePackage(result)
+			case buildRequests <- next:
+				buildPackage(next)
+			}
+		} else {
+			select {
+			case result := <-downloadResults:
+				queuePackage(result)
+			case result := <-buildResults:
+				storePackage(result)
+			}
+		}
+	}
 }
 
 type downloadResult struct {
@@ -128,13 +134,9 @@ func downloader(gopath string, pkgs []string, results chan downloadResult) {
 	for _, pkg := range pkgs {
 		log.Println(pkg, "downloading")
 		err := download(gopath, pkg)
-		if err != nil {
-			log.Println(pkg, "failed to download:", err)
-		} else {
-			log.Println(pkg, "downloaded")
-		}
 		results <- downloadResult{pkg, err}
 	}
+	log.Println("done downloading")
 }
 
 func makeEnv(gopath string) []string {
@@ -181,7 +183,7 @@ func goFmt(gopath, pkg string) (int, error) {
 
 func download(gopath, pkg string) error {
 	cmd := exec.Command("go", "get", "-d", "-u", pkg)
-	cmd.Env = makeEnv(gopath)
+	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
@@ -351,6 +353,7 @@ func main() {
 
 	if *mongo == "" {
 		c := collection.(*gosrc.MemoryCollection)
-		log.Println(c.Dump())
+		out, _ := c.Dump()
+		log.Println("result:", out)
 	}
 }
