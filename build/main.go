@@ -45,81 +45,32 @@ var isStd = func() map[string]bool {
 }()
 
 func getPackages(collection gosrc.Collection, gopath string, pkgs []string) {
-	var (
-		buildRequests   = make(chan string)
-		buildResults    = make(chan gosrc.Package)
-		downloadResults = make(chan downloadResult)
-	)
+	downloadQueue := make(chan string)
+	buildQueue := make(chan string)
 
-	go downloader(gopath, pkgs, downloadResults)
-	for i := 0; i < *numBuilders; i++ {
-		go builder(gopath, buildRequests, buildResults)
-	}
+	downloadResults := startDownloader(gopath, pkgs, downloadQueue)
+	buildResults := startBuilders(gopath, *numBuilders, buildQueue)
 
-	var (
-		queue    = make(map[string]bool)
-		visited  = make(map[string]bool)
-		building = 0
-	)
-
+	downloading := len(pkgs)
 	for {
-		var next string
-
-		// Pop a random package from the queue
-		for p := range queue {
-			next = p
-			break
-		}
-
-		storePackage := func(result gosrc.Package) {
-			building--
-			err := collection.Insert(result)
-			if err != nil {
-				log.Println(result, "failed to insert results:", err)
-				queue[result.ImportPath] = true
-				visited[result.ImportPath] = false
-				return
-			}
-
-			for _, imp := range result.BuildInfo.Imports {
-				if !visited[imp] {
-					queue[imp] = true
-				}
-			}
-		}
-
-		queuePackage := func(result downloadResult) {
-			if result.err != nil {
-				log.Println(result.pkg, "failed to download:", result.err)
+		select {
+		case r := <-downloadResults:
+			downloading--
+			if r.err != nil {
+				log.Println(r.pkg, "failed to download:", r.err)
 			} else {
-				log.Println(result.pkg, "downloaded")
-				queue[result.pkg] = true
+				log.Println(r.pkg, "downloaded")
+				buildQueue <- r.pkg
 			}
-		}
-
-		buildPackage := func(name string) {
-			// if a builder has accepted the package pop it from the queue
-			// and add it to the visited list.
-			delete(queue, next)
-			visited[next] = true
-			building++
-		}
-
-		if next != "" {
-			select {
-			case result := <-downloadResults:
-				queuePackage(result)
-			case result := <-buildResults:
-				storePackage(result)
-			case buildRequests <- next:
-				buildPackage(next)
+		case r := <-buildResults:
+			err := collection.Insert(r)
+			if err != nil {
+				log.Println(r, "failed to insert results:", err)
+				continue
 			}
-		} else {
-			select {
-			case result := <-downloadResults:
-				queuePackage(result)
-			case result := <-buildResults:
-				storePackage(result)
+
+			for _, imp := range r.BuildInfo.Imports {
+				downloadQueue <- imp
 			}
 		}
 	}
@@ -130,13 +81,104 @@ type downloadResult struct {
 	err error
 }
 
-func downloader(gopath string, pkgs []string, results chan downloadResult) {
-	for _, pkg := range pkgs {
-		log.Println(pkg, "downloading")
-		err := download(gopath, pkg)
-		results <- downloadResult{pkg, err}
+func startDownloader(gopath string, pkgs []string, downloadQueue chan string) chan downloadResult {
+	downloadRequests := make(chan string)
+
+	go func() {
+		queue := newOneTimeQueue()
+		for _, p := range pkgs {
+			queue.Push(p)
+		}
+
+		var next string
+		for {
+			if next == "" {
+				next = queue.Pop()
+			}
+
+			if next != "" {
+				select {
+				case p := <-downloadQueue:
+					queue.Push(p)
+				case downloadRequests <- next:
+					next = ""
+				}
+			} else {
+				p := <-downloadQueue
+				queue.Push(p)
+			}
+		}
+	}()
+	return downloader(gopath, downloadRequests)
+}
+
+func downloader(gopath string, pkgs chan string) chan downloadResult {
+	results := make(chan downloadResult)
+	go func() {
+		for pkg := range pkgs {
+			log.Println(pkg, "downloading")
+			err := download(gopath, pkg)
+			results <- downloadResult{pkg, err}
+		}
+	}()
+	return results
+}
+
+type oneTimeQueue struct {
+	queue map[string]bool
+	seen  map[string]bool
+}
+
+func (q *oneTimeQueue) Push(s string) {
+	if !q.seen[s] {
+		q.queue[s] = true
+		q.seen[s] = true
 	}
-	log.Println("done downloading")
+}
+
+func (q *oneTimeQueue) Pop() string {
+	for next := range q.queue {
+		delete(q.queue, next)
+		return next
+	}
+	return ""
+}
+
+func newOneTimeQueue() *oneTimeQueue {
+	return &oneTimeQueue{make(map[string]bool), make(map[string]bool)}
+}
+
+func startBuilders(gopath string, builders int, buildQueue chan string) chan gosrc.Package {
+	buildRequests := make(chan string)
+	buildResults := make(chan gosrc.Package)
+
+	for i := 0; i < builders; i++ {
+		go builder(gopath, buildRequests, buildResults)
+	}
+
+	go func() {
+		queue := newOneTimeQueue()
+
+		var next string
+		for {
+			if next == "" {
+				next = queue.Pop()
+			}
+
+			if next != "" {
+				select {
+				case pkg := <-buildQueue:
+					queue.Push(pkg)
+				case buildRequests <- next:
+					next = ""
+				}
+			} else {
+				pkg := <-buildQueue
+				queue.Push(pkg)
+			}
+		}
+	}()
+	return buildResults
 }
 
 func makeEnv(gopath string) []string {
